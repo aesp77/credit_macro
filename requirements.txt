@@ -1,0 +1,11 @@
+keras-core>=3.0.0
+torch>=2.0.0
+pandas
+numpy
+scikit-learn
+matplotlib
+notebook
+jupyter
+optuna
+pyyaml
+xgboost
