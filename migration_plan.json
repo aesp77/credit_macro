@@ -1,0 +1,43 @@
+{
+  "src/models/trs.py": {
+    "source": "notebooks/total_return.ipynb",
+    "functions": [
+      "calculate_cds_total_return",
+      "interpolate_curve_rolldown",
+      "TRSDatabaseBuilder",
+      "calculate_trs",
+      "build_trs_database",
+      "get_trs_data",
+      "test_database"
+    ],
+    "description": "Total Return Series calculations and database"
+  },
+  "src/models/strategy_calc.py": {
+    "source": "notebooks/total_return.ipynb",
+    "functions": [
+      "calculate_corrected_strategy_metrics",
+      "calculate_generic_strategy_metrics",
+      "test_generic_strategy_calculator",
+      "calculate_steepener_pnl",
+      "visualize_steepener_strategy"
+    ],
+    "description": "Strategy P&L calculations"
+  },
+  "src/data/curve_loader.py": {
+    "source": "notebooks/01_data_exploration.ipynb",
+    "functions": [
+      "get_current_series",
+      "get_current_curve",
+      "get_historical_curves",
+      "populate_database_with_curves"
+    ],
+    "description": "Curve data loading utilities"
+  },
+  "src/utils/data_cleaning.py": {
+    "source": "notebooks/04_pnl_reconstruction.ipynb",
+    "functions": [
+      "clean_spread_data"
+    ],
+    "description": "Data cleaning utilities"
+  }
+}
