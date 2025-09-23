@@ -675,7 +675,7 @@ class CDSDatabase:
             raise
 
     def query_historical_spreads(self, index_name=None, tenor=None, 
-                               start_date=None, end_date=None) -> pd.DataFrame:
+                            start_date=None, end_date=None) -> pd.DataFrame:
         """Query historical raw spreads from database"""
         
         query = "SELECT * FROM raw_historical_spreads WHERE 1=1"
@@ -697,7 +697,7 @@ class CDSDatabase:
             query += " AND date <= ?"
             params.append(end_date)
         
-        query += " ORDER BY date DESC"
+        query += " ORDER BY date"
         
         df = pd.read_sql_query(query, self.conn, params=params)
         
@@ -718,3 +718,210 @@ class CDSDatabase:
         """Close database connection"""
         self.conn.close()
         logger.info("Database connection closed")
+        
+    def update_historical_data(self, days_back: int = 30, specific_date: datetime = None):
+        """
+        Update database with missing or recent data only
+        More efficient than full repopulation
+        
+        Args:
+            days_back: Number of days to look back for updates (default 30)
+            specific_date: Update data for a specific date only
+        """
+        print(f"Updating historical data...")
+        
+        if specific_date:
+            dates_to_update = [specific_date]
+        else:
+            # Get the most recent date in database
+            cursor = self.conn.execute("""
+                SELECT MAX(date) as last_date FROM raw_historical_spreads
+            """)
+            last_date_row = cursor.fetchone()
+            
+            if last_date_row and last_date_row[0]:
+                last_date = datetime.strptime(last_date_row[0], '%Y-%m-%d')
+                # Start from day after last date
+                start_date = last_date + timedelta(days=1)
+            else:
+                # If database is empty, go back specified days
+                start_date = datetime.now() - timedelta(days=days_back)
+            
+            end_date = datetime.now()
+            
+            # Generate business days that need updating
+            dates_to_update = pd.bdate_range(start_date, end_date, freq='B')
+        
+        if len(dates_to_update) == 0:
+            print("Database is already up to date")
+            return
+        
+        print(f"Updating {len(dates_to_update)} business days...")
+        print(f"Date range: {dates_to_update[0].strftime('%Y-%m-%d')} to {dates_to_update[-1].strftime('%Y-%m-%d')}")
+        
+        batch_data = []
+        batch_size = 500
+        updated_count = 0
+        
+        try:
+            for i, date in enumerate(dates_to_update):
+                if i % 10 == 0 and i > 0:
+                    print(f"  Progress: {i}/{len(dates_to_update)} days...")
+                
+                # Check what data we already have for this date
+                existing_data = self.conn.execute("""
+                    SELECT index_name, tenor FROM raw_historical_spreads
+                    WHERE date = ?
+                """, (date.strftime('%Y-%m-%d'),)).fetchall()
+                
+                existing_pairs = {(row[0], row[1]) for row in existing_data}
+                
+                # Get data for each index on this date
+                for region_market in SERIES_MAPPINGS.keys():
+                    family = SERIES_MAPPINGS[region_market]['family']
+                    series = self.get_series_for_date(date, family)
+                    
+                    # Build tickers for this specific date
+                    tickers = self.build_historical_tickers(region_market, date)
+                    
+                    if not tickers:
+                        continue
+                    
+                    # Filter out tickers we already have
+                    tickers_to_fetch = {}
+                    for tenor, ticker in tickers.items():
+                        if (region_market, tenor) not in existing_pairs:
+                            tickers_to_fetch[tenor] = ticker
+                    
+                    if not tickers_to_fetch:
+                        continue  # Skip if we have all data for this index/date
+                    
+                    try:
+                        # Get Bloomberg data only for missing tickers
+                        data = blp.bdh(list(tickers_to_fetch.values()), flds='PX_LAST',
+                                    start_date=date.strftime('%Y%m%d'),
+                                    end_date=date.strftime('%Y%m%d'))
+                        
+                        if data is not None and not data.empty:
+                            if isinstance(data.columns, pd.MultiIndex):
+                                data.columns = data.columns.get_level_values(0)
+                            
+                            # Store raw spread for each tenor
+                            for tenor, ticker in tickers_to_fetch.items():
+                                if ticker in data.columns and len(data) > 0:
+                                    raw_spread = data.iloc[0][ticker]
+                                    
+                                    if pd.notna(raw_spread):
+                                        batch_data.append({
+                                            'date': date.date(),
+                                            'index_name': region_market,
+                                            'tenor': tenor,
+                                            'spread_bps': float(raw_spread),
+                                            'series_number': series,
+                                            'bloomberg_ticker': ticker
+                                        })
+                                        updated_count += 1
+                                        
+                                if len(batch_data) >= batch_size:
+                                    self._upsert_historical_batch(batch_data)
+                                    batch_data = []
+                                    
+                    except Exception as e:
+                        print(f"    Warning: Failed to fetch {region_market} on {date}: {e}")
+                        continue
+            
+            # Insert remaining data
+            if batch_data:
+                self._upsert_historical_batch(batch_data)
+            
+            print(f"\nUpdate complete! Added/updated {updated_count} records")
+            
+            # Show summary of updates
+            if updated_count > 0:
+                cursor = self.conn.execute("""
+                    SELECT index_name, COUNT(*) as count
+                    FROM raw_historical_spreads
+                    WHERE date >= ?
+                    GROUP BY index_name
+                """, (dates_to_update[0].strftime('%Y-%m-%d'),))
+                
+                print("\nRecords updated by index:")
+                for row in cursor.fetchall():
+                    print(f"  {row[0]}: {row[1]} records")
+                    
+        except Exception as e:
+            print(f"Error during update: {e}")
+            self.conn.rollback()
+            raise
+
+    def _upsert_historical_batch(self, batch_data):
+        """Insert or update batch of historical data"""
+        if not batch_data:
+            return
+        
+        try:
+            # Use INSERT OR REPLACE to update existing records
+            self.conn.executemany("""
+                INSERT OR REPLACE INTO raw_historical_spreads
+                (date, index_name, tenor, spread_bps, series_number, bloomberg_ticker)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, [
+                (row['date'], row['index_name'], row['tenor'], 
+                row['spread_bps'], row['series_number'], row['bloomberg_ticker'])
+                for row in batch_data
+            ])
+            self.conn.commit()
+        except Exception as e:
+            logger.error(f"Error upserting historical batch: {e}")
+            self.conn.rollback()
+            raise
+
+    def check_data_gaps(self, index_name: str = None, tenor: str = None):
+        """
+        Check for gaps in the historical data
+        
+        Returns a report of missing dates
+        """
+        query = """
+            SELECT date FROM raw_historical_spreads
+            WHERE 1=1
+        """
+        params = []
+        
+        if index_name:
+            query += " AND index_name = ?"
+            params.append(index_name)
+        if tenor:
+            query += " AND tenor = ?"
+            params.append(tenor)
+        
+        query += " ORDER BY date"
+        
+        df = pd.read_sql_query(query, self.conn, params=params)
+        
+        if df.empty:
+            print("No data found for specified criteria")
+            return
+        
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # Generate expected business days
+        expected_dates = pd.bdate_range(df['date'].min(), df['date'].max(), freq='B')
+        actual_dates = set(df['date'].dt.date)
+        expected_dates_set = set(d.date() for d in expected_dates)
+        
+        missing_dates = expected_dates_set - actual_dates
+        
+        if missing_dates:
+            print(f"Found {len(missing_dates)} missing dates:")
+            for date in sorted(missing_dates)[:10]:  # Show first 10
+                print(f"  {date}")
+            if len(missing_dates) > 10:
+                print(f"  ... and {len(missing_dates) - 10} more")
+        else:
+            print("No gaps found - data is complete")
+        
+        return missing_dates
+        
+        
+        
