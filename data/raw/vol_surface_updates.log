@@ -1,0 +1,21 @@
+2025-09-29 17:46:28,557 - ERROR - Excel file not found: C:\Users\alessandro.esposito\Portman Square Capital LLP\Portman Square Capital - Documents\S\CSA\Credit Index Trading\vol_db.xlsx
+2025-09-29 18:02:52,040 - INFO - Processing vol surfaces for date: 2025-09-29
+2025-09-29 18:02:52,220 - INFO - Found 17 sheets
+2025-09-29 18:02:52,258 - INFO -   main_1m: 27 options stored
+2025-09-29 18:02:52,260 - INFO -   main-2m: 27 options stored
+2025-09-29 18:02:52,261 - INFO -   main_3m: 27 options stored
+2025-09-29 18:02:52,264 - INFO -   main_4m: 27 options stored
+2025-09-29 18:02:52,266 - INFO -   xover_1m: 25 options stored
+2025-09-29 18:02:52,269 - INFO -   xover_2m: 25 options stored
+2025-09-29 18:02:52,271 - INFO -   xover_3m: 25 options stored
+2025-09-29 18:02:52,272 - INFO -   xover_4m: 25 options stored
+2025-09-29 18:02:52,274 - INFO -   ig_1m: 24 options stored
+2025-09-29 18:02:52,276 - INFO -   ig_2m: 34 options stored
+2025-09-29 18:02:52,277 - INFO -   ig_3m: 34 options stored
+2025-09-29 18:02:52,280 - INFO -   ig_4m: 34 options stored
+2025-09-29 18:02:52,282 - INFO -   ig_5m: 34 options stored
+2025-09-29 18:02:52,284 - INFO -   hy_1m: 24 options stored
+2025-09-29 18:02:52,286 - INFO -   hy_2m: 34 options stored
+2025-09-29 18:02:52,287 - INFO -   hy_3m: 34 options stored
+2025-09-29 18:02:52,290 - INFO -   hy_4m: 34 options stored
+2025-09-29 18:02:52,297 - INFO - Total options stored: 494
