@@ -30,30 +30,41 @@ class SpreadPredictor:
         labels[future_change < -self.threshold_bps] = -1  # Tighten  
         labels[abs(future_change) <= self.threshold_bps] = 0  # Flat
         
+        
+        
         return labels
     
     def train(self, X: pd.DataFrame, y: pd.Series) -> Dict:
         """Train model with time series cross-validation"""
+        
+        # Ensure y contains only valid numeric labels
+        valid_mask = y.notna() & y.isin([-1.0, 0.0, 1.0])
+        X_clean = X[valid_mask]
+        y_clean = y[valid_mask].astype(int)  # Convert to int for classifier
+        
+        if len(X_clean) < 50:
+            raise ValueError(f"Insufficient valid samples: {len(X_clean)}")
+        
         tscv = TimeSeriesSplit(n_splits=5)
         scores = []
         
-        for train_idx, val_idx in tscv.split(X):
-            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+        for train_idx, val_idx in tscv.split(X_clean):
+            X_train, X_val = X_clean.iloc[train_idx], X_clean.iloc[val_idx]
+            y_train, y_val = y_clean.iloc[train_idx], y_clean.iloc[val_idx]
             
             self.model.fit(X_train, y_train)
             score = self.model.score(X_val, y_val)
             scores.append(score)
         
         # Final fit on all data
-        self.model.fit(X, y)
+        self.model.fit(X_clean, y_clean)
         
         return {
             'cv_score_mean': np.mean(scores),
             'cv_score_std': np.std(scores),
             'feature_importance': pd.Series(
                 self.model.feature_importances_,
-                index=X.columns
+                index=X_clean.columns
             ).sort_values(ascending=False)
         }
     

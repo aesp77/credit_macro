@@ -78,24 +78,30 @@ class RegimeDetector:
     def get_regime_statistics(self, features_df: pd.DataFrame, regimes: pd.Series) -> pd.DataFrame:
         """Calculate statistics for each regime"""
         stats = []
-        for regime in regimes.unique():
-            mask = regimes == regime
-            regime_data = features_df[mask]
+        
+        # Ensure both have the same index
+        common_index = features_df.index.intersection(regimes.index)
+        features_aligned = features_df.loc[common_index]
+        regimes_aligned = regimes.loc[common_index]
+        
+        for regime in regimes_aligned.unique():
+            mask = regimes_aligned == regime
+            regime_data = features_aligned[mask]
             
             # Calculate if this is bullish or bearish
-            avg_spread = regime_data['spread_level'].mean() if 'spread_level' in regime_data else np.nan
+            avg_spread = regime_data['spread_level'].mean() if 'spread_level' in regime_data.columns else np.nan
             
             stats.append({
                 'regime': regime,
                 'frequency': mask.sum() / len(mask),
                 'avg_spread': avg_spread,
-                'avg_volatility': regime_data['vol_20d'].mean() if 'vol_20d' in regime_data else np.nan,
+                'avg_volatility': regime_data['vol_20d'].mean() if 'vol_20d' in regime_data.columns else np.nan,
                 'duration_days': mask.sum(),
                 'market_condition': 'Bullish' if avg_spread < 60 else 'Bearish' if avg_spread > 80 else 'Neutral'
             })
         
         return pd.DataFrame(stats).sort_values('avg_spread')
-    
+        
     
     """
 Enhanced Market regime detection with dynamic thresholds and momentum

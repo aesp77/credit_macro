@@ -19,3 +19,28 @@
 2025-09-29 18:02:52,287 - INFO -   hy_3m: 34 options stored
 2025-09-29 18:02:52,290 - INFO -   hy_4m: 34 options stored
 2025-09-29 18:02:52,297 - INFO - Total options stored: 494
+2025-09-30 10:21:28,333 - INFO - Processing vol surfaces for date: 2025-09-30
+2025-09-30 10:22:01,228 - INFO - Processing vol surfaces for date: 2025-09-30
+2025-09-30 10:22:02,143 - INFO - Processing vol surfaces for date: 2025-09-30
+2025-09-30 10:24:27,492 - INFO - Processing vol surfaces for date: 2025-09-30
+2025-09-30 10:24:27,689 - INFO - Found 17 sheets
+2025-09-30 10:24:27,697 - INFO -   main_1m: 27 options stored
+2025-09-30 10:24:27,700 - INFO -   main-2m: 27 options stored
+2025-09-30 10:24:27,702 - INFO -   main_3m: 27 options stored
+2025-09-30 10:24:27,704 - INFO -   main_4m: 27 options stored
+2025-09-30 10:24:27,706 - INFO -   xover_1m: 25 options stored
+2025-09-30 10:24:27,709 - INFO -   xover_2m: 25 options stored
+2025-09-30 10:24:27,711 - INFO -   xover_3m: 25 options stored
+2025-09-30 10:24:27,713 - INFO -   xover_4m: 25 options stored
+2025-09-30 10:24:27,716 - INFO -   ig_1m: 24 options stored
+2025-09-30 10:24:27,717 - INFO -   ig_2m: 34 options stored
+2025-09-30 10:24:27,720 - INFO -   ig_3m: 34 options stored
+2025-09-30 10:24:27,722 - INFO -   ig_4m: 34 options stored
+2025-09-30 10:24:27,724 - INFO -   ig_5m: 34 options stored
+2025-09-30 10:24:27,727 - INFO -   hy_1m: 24 options stored
+2025-09-30 10:24:27,728 - INFO -   hy_2m: 34 options stored
+2025-09-30 10:24:27,731 - INFO -   hy_3m: 34 options stored
+2025-09-30 10:24:27,734 - INFO -   hy_4m: 34 options stored
+2025-09-30 10:24:27,741 - INFO - Total options stored: 494
+2025-09-30 11:46:15,987 - INFO - Data for 2025-09-30 already exists. Use force_update=True to overwrite.
+2025-09-30 11:47:20,122 - INFO - Data for 2025-09-30 already exists. Use force_update=True to overwrite.
