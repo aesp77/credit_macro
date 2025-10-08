@@ -220,6 +220,133 @@ rolldown = curve.calculate_rolldown(horizon_days=90)
 print(f"90-day roll-down: {rolldown}")
 ```
 
+## Launching the Streamlit Dashboard
+
+The CDS Monitor includes a comprehensive Streamlit web dashboard for real-time monitoring and analysis.
+
+### One-Click Launch (Easiest)
+
+Use the provided launch scripts to update databases and start the dashboard in one step:
+
+**PowerShell (Recommended):**
+```powershell
+.\launch_dashboard.ps1
+```
+
+**Command Prompt / Batch:**
+```cmd
+launch_dashboard.bat
+```
+
+These scripts will:
+1. Update both databases with latest Bloomberg data
+2. Launch the Streamlit dashboard automatically
+3. Open your browser to the dashboard
+
+### Manual Launch
+
+If you prefer more control:
+
+```bash
+# Step 1: Update databases with latest data (recommended before each session)
+poetry run python update_databases.py
+
+# Step 2: Launch the Streamlit app
+cd src/apps
+poetry run streamlit run streamlit_app.py
+```
+
+The dashboard will open in your browser at `http://localhost:8501` (or `8502` if port is occupied).
+
+### Dashboard Features
+
+The dashboard includes multiple pages:
+
+1. **Home** - Overview and quick actions
+2. **Strategy Monitor** - Advanced strategy analysis with P&L decomposition
+3. **Spread Analysis** - Real-time spread monitoring and historical charts
+4. **Series Monitor** - Track series rolls and compare on/off-the-run spreads
+5. **ML Analysis** - Machine learning models and predictions
+6. **Option Pricing** - CDS index option valuation
+
+### Best Practices
+
+**Before Trading Day:**
+```bash
+# Morning routine - use one-click launch
+.\launch_dashboard.ps1
+```
+
+**During Trading Day:**
+- Dashboard refreshes automatically on page interactions
+- Use "Rerun" button in Streamlit to refresh data
+- For critical updates, re-run `update_databases.py` and refresh browser
+
+**After Market Close:**
+- Update databases with final marks: `poetry run python update_databases.py`
+- Review strategy P&L in Strategy Monitor page
+- Export reports if needed
+
+## Updating Databases
+
+The system uses two main databases that need to be updated regularly with the latest Bloomberg data:
+
+### Quick Update (Recommended)
+
+Use the automated update script to update both databases at once:
+
+```bash
+# Update with last 30 days of data (default)
+poetry run python update_databases.py
+
+# Update with custom lookback period
+poetry run python update_databases.py --days-back 60
+
+# Quiet mode (less verbose output)
+poetry run python update_databases.py --quiet
+```
+
+This script will:
+1. **Update Raw Database** (`data/raw/cds_indices_raw.db`) - Historical CDS spreads from Bloomberg
+2. **Update TRS Database** (`data/processed/cds_trs.db`) - Total Return Swap calculations
+
+### Manual Update
+
+If you need to update databases individually:
+
+**Update Raw Historical Spreads:**
+```bash
+cd credit_macro
+poetry run python -c "from src.models.database import CDSDatabase; db = CDSDatabase(r'C:\source\repos\psc\packages\psc_csa_tools\credit_macro\data\raw\cds_indices_raw.db'); db.update_historical_data(days_back=30); db.close()"
+```
+
+**Update TRS Database:**
+```bash
+cd credit_macro/src
+poetry run python -c "from models.trs import TRSDatabaseBuilder; builder = TRSDatabaseBuilder(r'C:\source\repos\psc\packages\psc_csa_tools\credit_macro\data\raw\cds_indices_raw.db', r'C:\source\repos\psc\packages\psc_csa_tools\credit_macro\data\processed\cds_trs.db'); builder.update_trs_database(days_back=30)"
+```
+
+### Database Update Schedule
+
+For production use, consider updating databases:
+- **Daily**: Before market open or after market close
+- **Intraday**: If real-time data is needed for active trading
+- **Weekly**: Minimum frequency to maintain data quality
+
+### What Gets Updated
+
+**Raw Database (`cds_indices_raw.db`)**:
+- Historical spreads for all tracked indices (EU_IG, EU_XO, US_IG, US_HY)
+- All tenors (3Y, 5Y, 7Y, 10Y)
+- Series information and roll dates
+- Only missing or new dates are fetched (incremental updates)
+
+**TRS Database (`cds_trs.db`)**:
+- Total return calculations for long and short positions
+- Carry, mark-to-market P&L, and cumulative returns
+- DV01 calculations with recovery rate assumptions
+- Derived from raw database, so update raw database first
+
 ## Configuration
 
 ### Bloomberg Connection
@@ -228,11 +355,166 @@ The system uses `xbbg` for Bloomberg connectivity. Ensure:
 2. Bloomberg API is properly installed
 3. You have appropriate data permissions
 
-### Database
-SQLite database is automatically created at `data/cds_monitor.db` on first run.
+### Database Paths
+The default database paths are:
+- **Raw Database**: `data/raw/cds_indices_raw.db`
+- **TRS Database**: `data/processed/cds_trs.db`
+
+These can be customized in the individual page files if needed.
 
 ### Logging
 Logs are written to `logs/` directory with rotation. Configure in `src/utils/logger.py`.
+
+## Testing Guide
+
+This guide will help you verify that all updates are working correctly.
+
+### Quick Verification Checklist
+
+Run through these tests to verify everything is working:
+
+**Test 1: Verify Files Exist**
+
+```powershell
+cd C:\source\repos\psc\packages\psc_csa_tools\credit_macro
+
+# Check new files
+Test-Path update_databases.py          # Should be True
+Test-Path launch_dashboard.ps1         # Should be True
+Test-Path launch_dashboard.bat         # Should be True
+```
+
+**Test 2: Verify S44 Update in Streamlit App**
+
+```powershell
+# Check that S44 appears in the front page
+Get-Content src\apps\streamlit_app.py | Select-String "S44"
+
+# Expected output:
+#     st.metric("Active Series", "S44")
+```
+
+**Test 3: Test Update Script**
+
+```powershell
+poetry run python update_databases.py --help
+
+# Expected output shows usage and options
+```
+
+**Test 4: Verify Database Files Exist**
+
+```powershell
+# Check that databases exist
+Test-Path data\raw\cds_indices_raw.db           # Should be True
+Test-Path data\processed\cds_trs.db             # Should be True
+```
+
+### Full Integration Test
+
+To test the complete workflow:
+
+**Step 1: Update Databases**
+```powershell
+cd C:\source\repos\psc\packages\psc_csa_tools\credit_macro
+poetry run python update_databases.py
+```
+
+**Expected Result:**
+- ✓ Raw database updated with latest data
+- ✓ TRS database recalculated
+- ✓ Summary showing number of records updated
+
+**Step 2: Launch Dashboard**
+```powershell
+cd src\apps
+poetry run streamlit run streamlit_app.py
+```
+
+**Expected Result:**
+- ✓ Streamlit app starts
+- ✓ Browser opens to http://localhost:8501 or 8502
+- ✓ Front page shows "Active Series: S44"
+- ✓ All pages load without errors
+
+**Step 3: Verify Dashboard Data**
+
+In the browser:
+
+1. **Home Page:**
+   - Check "Active Series" shows "S44" ✓
+   - Check "Database Status" shows "Connected" ✓
+   - Check "Last Update" shows "Live" ✓
+
+2. **Strategy Monitor Page:**
+   - Navigate to Strategy Monitor
+   - Check that data loads ✓
+   - Try different index combinations ✓
+
+3. **Spread Analysis Page:**
+   - Navigate to Spread Analysis
+   - Check charts render ✓
+   - Verify latest dates appear ✓
+
+4. **Series Monitor Page:**
+   - Navigate to Series Monitor
+   - Check S44 data is available ✓
+
+### One-Click Test (Easiest)
+
+The easiest way to test everything:
+
+```powershell
+cd C:\source\repos\psc\packages\psc_csa_tools\credit_macro
+.\launch_dashboard.ps1
+```
+
+**This single command will:**
+1. Update both databases automatically
+2. Launch the Streamlit dashboard
+3. Open your browser to the app
+
+**Success Criteria:**
+- ✓ Script runs without errors
+- ✓ Dashboard opens in browser
+- ✓ "Active Series" shows "S44"
+- ✓ All pages load with data
+
+### Quick Command Reference
+
+```powershell
+# Navigate to project
+cd C:\source\repos\psc\packages\psc_csa_tools\credit_macro
+
+# Update databases only
+poetry run python update_databases.py
+
+# Update with custom lookback
+poetry run python update_databases.py --days-back 60
+
+# Launch dashboard only (without updating)
+cd src\apps
+poetry run streamlit run streamlit_app.py
+
+# One-click: Update + Launch
+.\launch_dashboard.ps1
+
+# One-click: Batch version
+launch_dashboard.bat
+
+# View help
+poetry run python update_databases.py --help
+```
+
+### What Success Looks Like
+
+After running all tests, you should have:
+
+- ✅ All new files created (`update_databases.py`, `launch_dashboard.ps1`, `launch_dashboard.bat`)
+- ✅ Front page showing "Active Series: S44"
+- ✅ Both databases updated with latest data
+- ✅ Streamlit dashboard running and showing current data
+- ✅ All dashboard pages working correctly
 
 ## Key Features
 
@@ -253,6 +535,41 @@ Logs are written to `logs/` directory with rotation. Configure in `src/utils/log
 - RESTful API ready
 
 ## Troubleshooting
+
+### Common Issues and Solutions
+
+**Issue: "ModuleNotFoundError: No module named 'models'"**
+
+*Solution:* Make sure you're in the correct directory
+```powershell
+cd C:\source\repos\psc\packages\psc_csa_tools\credit_macro
+poetry run python update_databases.py
+```
+
+**Issue: "Bloomberg connection failed"**
+
+*Solution:*
+1. Ensure Bloomberg Terminal is running
+2. Check Bloomberg API is installed (`pip install xbbg`)
+3. Verify you have data permissions
+
+**Issue: "Database file not found"**
+
+*Solution:* Databases will be created automatically on first run. Just run:
+```powershell
+poetry run python update_databases.py
+```
+
+**Issue: Streamlit shows old series (S43 instead of S44)**
+
+*Solution:*
+1. Stop the Streamlit server (Ctrl+C)
+2. Relaunch: `poetry run streamlit run streamlit_app.py`
+3. Hard refresh browser (Ctrl+Shift+R)
+
+**Issue: "Port already in use"**
+
+*Solution:* Streamlit will automatically try next port (8502, 8503, etc.)
 
 ### Import Errors
 ```bash

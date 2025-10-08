@@ -908,10 +908,13 @@ class CDSIndexOptionPricer:
     def price_strategy(self, legs: List[Dict], data_date: str = None) -> Dict:
         """
         Price multi-leg option strategy
+        
+        Returns delta as weighted average based on notional
         """
         
         total_upfront = 0
-        total_delta_weighted = 0
+        total_delta_dollar = 0  # Delta in dollar terms
+        total_notional = 0
         total_gamma = 0
         total_vega = 0
         total_theta = 0
@@ -920,23 +923,31 @@ class CDSIndexOptionPricer:
         
         for leg in legs:
             # Price individual leg
+            leg_notional = abs(leg.get('notional', 10_000_000))
+            
             leg_price = self.price_single_option(
                 index_name=leg['index_name'],
                 tenor=leg['tenor'],
                 strike=leg['strike'],
                 option_type=leg['option_type'],
-                notional=abs(leg.get('notional', 10_000_000)),
+                notional=leg_notional,
                 data_date=data_date
             )
             
-            # Apply position
+            # Apply position (1 for long, -1 for short)
             position = leg.get('position', 1)
-            notional_ratio = leg.get('notional', 10_000_000) / 10_000_000
             
             # Aggregate
             total_upfront += position * leg_price['upfront_currency']
-            total_delta_weighted += position * leg_price['delta'] * notional_ratio
-            total_gamma += position * leg_price['gamma'] * notional_ratio
+            
+            # Delta aggregation: 
+            # leg_price['delta'] is in % (e.g., 50 means 50%)
+            # Dollar delta = delta% * notional / 100
+            leg_delta_dollar = position * (leg_price['delta'] / 100) * leg_notional
+            total_delta_dollar += leg_delta_dollar
+            
+            total_notional += leg_notional  # Always positive
+            total_gamma += position * leg_price['gamma']
             total_vega += position * leg_price['vega_currency']
             total_theta += position * leg_price['theta_currency']
             
@@ -944,12 +955,19 @@ class CDSIndexOptionPricer:
             leg_results.append({
                 'leg': leg,
                 'price': leg_price,
-                'contribution': position * leg_price['upfront_currency']
+                'contribution': position * leg_price['upfront_currency'],
+                'delta_dollar': leg_delta_dollar
             })
+        
+        # Convert total delta back to percentage terms
+        # total_delta% = (total_delta_dollar / total_notional) * 100
+        total_delta_pct = (total_delta_dollar / total_notional * 100) if total_notional > 0 else 0
         
         return {
             'total_upfront': total_upfront,
-            'total_delta': total_delta_weighted,
+            'total_delta': total_delta_pct,
+            'total_delta_dollar': total_delta_dollar,
+            'total_notional': total_notional,
             'total_gamma': total_gamma,
             'total_vega': total_vega,
             'total_theta': total_theta,

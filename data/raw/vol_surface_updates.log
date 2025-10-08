@@ -44,3 +44,45 @@
 2025-09-30 10:24:27,741 - INFO - Total options stored: 494
 2025-09-30 11:46:15,987 - INFO - Data for 2025-09-30 already exists. Use force_update=True to overwrite.
 2025-09-30 11:47:20,122 - INFO - Data for 2025-09-30 already exists. Use force_update=True to overwrite.
+2025-10-01 11:34:50,746 - INFO - Processing vol surfaces for date: 2025-10-01
+2025-10-08 14:14:28,544 - INFO - Processing vol surfaces for date: 2025-10-08
+2025-10-08 16:07:21,167 - INFO - Processing vol surfaces for date: 2025-10-08
+2025-10-08 16:07:21,415 - INFO - Found 17 sheets
+2025-10-08 16:07:21,418 - INFO -   main_1m: 27 options stored
+2025-10-08 16:07:21,420 - INFO -   main-2m: 27 options stored
+2025-10-08 16:07:21,421 - INFO -   main_3m: 27 options stored
+2025-10-08 16:07:21,423 - INFO -   main_4m: 27 options stored
+2025-10-08 16:07:21,425 - INFO -   xover_1m: 25 options stored
+2025-10-08 16:07:21,426 - INFO -   xover_2m: 25 options stored
+2025-10-08 16:07:21,428 - INFO -   xover_3m: 25 options stored
+2025-10-08 16:07:21,430 - INFO -   xover_4m: 25 options stored
+2025-10-08 16:07:21,431 - INFO -   ig_1m: 24 options stored
+2025-10-08 16:07:21,432 - INFO -   ig_2m: 34 options stored
+2025-10-08 16:07:21,434 - INFO -   ig_3m: 34 options stored
+2025-10-08 16:07:21,435 - INFO -   ig_4m: 34 options stored
+2025-10-08 16:07:21,437 - INFO -   ig_5m: 34 options stored
+2025-10-08 16:07:21,439 - INFO -   hy_1m: 22 options stored
+2025-10-08 16:07:21,440 - INFO -   hy_2m: 32 options stored
+2025-10-08 16:07:21,442 - INFO -   hy_3m: 34 options stored
+2025-10-08 16:07:21,444 - INFO -   hy_4m: 34 options stored
+2025-10-08 16:07:21,451 - INFO - Total options stored: 490
+2025-10-08 16:08:25,666 - INFO - Processing vol surfaces for date: 2025-10-07
+2025-10-08 16:08:25,682 - INFO - Found 17 sheets
+2025-10-08 16:08:25,689 - INFO -   main_1m: 27 options stored
+2025-10-08 16:08:25,691 - INFO -   main-2m: 27 options stored
+2025-10-08 16:08:25,694 - INFO -   main_3m: 27 options stored
+2025-10-08 16:08:25,697 - INFO -   main_4m: 27 options stored
+2025-10-08 16:08:25,699 - INFO -   xover_1m: 25 options stored
+2025-10-08 16:08:25,705 - INFO -   xover_2m: 25 options stored
+2025-10-08 16:08:25,709 - INFO -   xover_3m: 25 options stored
+2025-10-08 16:08:25,712 - INFO -   xover_4m: 25 options stored
+2025-10-08 16:08:25,714 - INFO -   ig_1m: 24 options stored
+2025-10-08 16:08:25,717 - INFO -   ig_2m: 34 options stored
+2025-10-08 16:08:25,719 - INFO -   ig_3m: 34 options stored
+2025-10-08 16:08:25,722 - INFO -   ig_4m: 34 options stored
+2025-10-08 16:08:25,725 - INFO -   ig_5m: 34 options stored
+2025-10-08 16:08:25,728 - INFO -   hy_1m: 22 options stored
+2025-10-08 16:08:25,731 - INFO -   hy_2m: 32 options stored
+2025-10-08 16:08:25,733 - INFO -   hy_3m: 34 options stored
+2025-10-08 16:08:25,736 - INFO -   hy_4m: 34 options stored
+2025-10-08 16:08:25,744 - INFO - Total options stored: 490

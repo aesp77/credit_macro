@@ -17,6 +17,49 @@ sys.path.insert(0, src_dir)
 # Import the option pricing system
 from models.cds_index_options import CDSIndexOptionPricer, VolSurfaceDatabase
 
+# Helper function to get 3rd Wednesday of a month
+def get_third_wednesday(year, month):
+    """Calculate the 3rd Wednesday of a given month"""
+    # Start from the first day of the month
+    first_day = datetime(year, month, 1)
+    # Find the first Wednesday
+    days_until_wednesday = (2 - first_day.weekday()) % 7  # Wednesday is 2
+    first_wednesday = first_day + timedelta(days=days_until_wednesday)
+    # Add 2 weeks to get the 3rd Wednesday
+    third_wednesday = first_wednesday + timedelta(weeks=2)
+    return third_wednesday
+
+# Create tenor mapping with expiry dates
+def get_tenor_display_map(reference_date=None):
+    """
+    Create a mapping of tenor codes to display names with expiry dates.
+    Returns: dict with keys like '1m' and values like 'Front Month (Jan 15, 2025)'
+    """
+    if reference_date is None:
+        reference_date = datetime.now()
+    
+    tenor_map = {}
+    month_names = ["Front Month", "2nd Month", "3rd Month", "4th Month", "5th Month", "6th Month"]
+    
+    for i, tenor_code in enumerate(["1m", "2m", "3m", "4m", "5m", "6m"]):
+        # Calculate the expiry month
+        expiry_month = reference_date.month + i
+        expiry_year = reference_date.year
+        
+        # Handle year rollover
+        while expiry_month > 12:
+            expiry_month -= 12
+            expiry_year += 1
+        
+        # Get 3rd Wednesday
+        expiry_date = get_third_wednesday(expiry_year, expiry_month)
+        
+        # Format display name
+        display_name = f"{month_names[i]} ({expiry_date.strftime('%b %d, %Y')})"
+        tenor_map[tenor_code] = display_name
+    
+    return tenor_map
+
 # Initialize components
 pricer = CDSIndexOptionPricer()
 vol_db = VolSurfaceDatabase()
@@ -31,11 +74,11 @@ with st.sidebar:
     # Show current database status
     available_dates = vol_db.get_available_dates()
     if available_dates:
-        st.success(f"✓ Database connected")
+        st.success(f"Database connected")
         st.write(f"Latest data: {available_dates[0]}")
         st.write(f"Total dates: {len(available_dates)}")
     else:
-        st.error("⚠ No data available")
+        st.error("No data available")
     
     st.divider()
     
@@ -72,13 +115,20 @@ tab1, tab2, tab3, tab4 = st.tabs(["Single Option", "Strategy Builder", "Surface 
 with tab1:
     st.header("Single Option Pricing")
     
+    # Get tenor display mapping
+    tenor_display_map = get_tenor_display_map()
+    tenor_options = list(tenor_display_map.values())
+    tenor_codes = list(tenor_display_map.keys())
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         index_name = st.selectbox("Index", ["EU_IG", "EU_XO", "US_IG", "US_HY"])
         
     with col2:
-        tenor = st.selectbox("Tenor", ["1m", "2m", "3m", "4m", "5m", "6m"])
+        tenor_display = st.selectbox("Tenor", tenor_options)
+        # Get the actual tenor code for pricing
+        tenor = tenor_codes[tenor_options.index(tenor_display)]
         
     with col3:
         # Get forward level for strike suggestions
@@ -109,7 +159,7 @@ with tab1:
         
     with col2:
         if available_dates:
-            data_date = st.selectbox("Data Date", available_dates)
+            data_date = st.selectbox("Data Date", available_dates, index=0)
         else:
             data_date = st.date_input("Data Date", value=datetime.now()).strftime("%Y-%m-%d")
             
@@ -263,12 +313,12 @@ with tab1:
                         within_spread = market_option['bid'] <= model_price <= market_option['ask']
                         
                         if within_spread:
-                            st.success(f"✓ Model price {model_price:.2f} bps is within bid/ask spread")
+                            st.success(f"Model price {model_price:.2f} bps is within bid/ask spread")
                         else:
                             if pd.notna(market_option['mid']):
                                 diff = model_price - market_option['mid']
                                 pct_diff = (diff / market_option['mid'] * 100) if market_option['mid'] != 0 else 0
-                                st.warning(f"⚠ Model price differs from mid by {diff:+.2f} bps ({pct_diff:+.1f}%)")
+                                st.warning(f"Model price differs from mid by {diff:+.2f} bps ({pct_diff:+.1f}%)")
                     elif pd.notna(market_option['mid']):
                         diff = model_price - market_option['mid']
                         pct_diff = (diff / market_option['mid'] * 100) if market_option['mid'] != 0 else 0
@@ -302,93 +352,613 @@ with tab1:
 with tab2:
     st.header("Strategy Builder")
     
-    # Strategy configuration
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        n_legs = st.number_input("Number of Legs", min_value=1, max_value=4, value=2)
-    with col2:
-        strategy_notional = st.number_input("Strategy Notional (MM)", value=10.0, min_value=0.1) * 1_000_000
-    with col3:
-        strategy_date = st.selectbox("Data Date", available_dates, key="strategy_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
+    # Get tenor display mapping
+    tenor_display_map = get_tenor_display_map()
+    tenor_options = list(tenor_display_map.values())
+    tenor_codes = list(tenor_display_map.keys())
     
-    # Configure each leg
+    st.markdown("""
+    Build multi-leg option strategies with directional exposure analysis and optional delta hedging.
+    - Configure up to 6 legs with different strikes, types, and positions
+    - View aggregated Greeks and risk metrics
+    - **Strategies are directional** - delta represents your market view
+    - Optional hedge calculator for delta-neutral positioning
+    - Analyze P&L across spread scenarios
+    """)
+    
+    # Strategy configuration section
+    st.subheader("Strategy Configuration")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        n_legs = st.number_input("Number of Legs", min_value=1, max_value=6, value=2, key="n_legs")
+    with col2:
+        strategy_notional = st.number_input("Strategy Notional (MM)", value=10.0, min_value=0.1, key="strat_notional") * 1_000_000
+    with col3:
+        strategy_date = st.selectbox("Data Date", available_dates, index=0, key="strategy_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
+    with col4:
+        strategy_name = st.text_input("Strategy Name", value="Custom Strategy", key="strat_name")
+    
+    st.divider()
+    
+    # Configure each leg with better UX
+    st.subheader("Configure Legs")
+    
     legs = []
     for i in range(n_legs):
-        st.subheader(f"Leg {i+1}")
+        with st.expander(f"**Leg {i+1}**", expanded=(i < 2)):  # First 2 legs expanded by default
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            
+            with col1:
+                leg_index = st.selectbox("Index", ["EU_IG", "EU_XO", "US_IG", "US_HY"], 
+                                        key=f"leg_idx_{i}")
+            with col2:
+                leg_tenor_display = st.selectbox("Tenor", tenor_options, 
+                                        key=f"leg_tenor_{i}")
+                # Get the actual tenor code
+                leg_tenor = tenor_codes[tenor_options.index(leg_tenor_display)]
+            with col3:
+                # Get forward for smart strike defaults
+                try:
+                    market_data = pricer.get_market_data(leg_index, leg_tenor, strategy_date)
+                    if not market_data.empty:
+                        forward = market_data['forward_level'].iloc[0]
+                        default_strike = round(forward)
+                    else:
+                        default_strike = 100.0
+                except:
+                    default_strike = 100.0
+                
+                leg_strike = st.number_input("Strike", value=float(default_strike), 
+                                            step=1.0 if leg_index != "US_HY" else 0.25,
+                                            key=f"leg_strike_{i}")
+            with col4:
+                leg_type = st.selectbox("Type", ["Payer", "Receiver"], key=f"leg_type_{i}")
+            with col5:
+                leg_position = st.selectbox("Position", [1, -1], key=f"leg_pos_{i}", 
+                                           format_func=lambda x: "LONG" if x == 1 else "SHORT")
+            with col6:
+                leg_weight = st.number_input("Weight", value=1.0, min_value=0.1, step=0.1,
+                                            key=f"leg_weight_{i}",
+                                            help="Multiplier for this leg's notional")
+            
+            legs.append({
+                'index_name': leg_index,
+                'tenor': leg_tenor,
+                'strike': leg_strike,
+                'option_type': leg_type,
+                'position': leg_position,
+                'notional': strategy_notional * leg_weight,
+                'weight': leg_weight
+            })
+    
+    st.divider()
+    
+    # Pricing and analysis section
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        price_strategy_button = st.button("Price Strategy", type="primary", use_container_width=True)
+    with col2:
+        st.write("")  # Spacer
+    
+    # Use session state to persist strategy results
+    if price_strategy_button:
+        try:
+            with st.spinner("Pricing strategy..."):
+                strategy_result = pricer.price_strategy(legs, strategy_date)
+                # Store in session state with different keys to avoid widget conflicts
+                st.session_state['_strategy_result'] = strategy_result
+                st.session_state['_strategy_legs'] = legs
+                st.session_state['_strategy_date'] = strategy_date
+                st.session_state['_strategy_notional'] = strategy_notional
+                st.session_state['_strategy_name'] = strategy_name
+        except Exception as e:
+            st.error(f"Pricing failed: {e}")
+            st.session_state['_strategy_result'] = None
+    
+    # Display results if available in session state
+    if '_strategy_result' in st.session_state and st.session_state['_strategy_result'] is not None:
+        strategy_result = st.session_state['_strategy_result']
+        legs = st.session_state['_strategy_legs']
+        strategy_date = st.session_state['_strategy_date']
+        strategy_notional = st.session_state['_strategy_notional']
+        strategy_name = st.session_state['_strategy_name']
+        
+        # ===================================================================
+        # STRATEGY SUMMARY - Aggregated Greeks
+        # ===================================================================
+        st.subheader("Strategy Summary")
+        
+        # Main metrics in prominent cards
         col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Total Upfront", f"${strategy_result['total_upfront']:,.0f}",
+                     help="Total premium paid (negative) or received (positive)")
+        with col2:
+            delta_pct = strategy_result['total_delta']
+            delta_color = "normal" if abs(delta_pct) < 10 else ("inverse" if abs(delta_pct) > 50 else "off")
+            st.metric("Net Delta", f"{delta_pct:.1f}%",
+                     delta_color=delta_color,
+                     help="Percentage exposure to underlying index movement")
+        with col3:
+            st.metric("Total Vega", f"${strategy_result['total_vega']:,.0f}",
+                     help="P&L sensitivity to 1% vol change")
+        with col4:
+            st.metric("Total Gamma", f"{strategy_result['total_gamma']:.4f}",
+                     help="Rate of delta change")
+        with col5:
+            st.metric("Daily Theta", f"${strategy_result['total_theta']:,.0f}",
+                     help="Daily time decay")
+        
+        # Strategy classification
+        st.info(f"**Strategy Type:** {strategy_result['strategy_type']}")
+        
+        st.divider()
+        
+        # ===================================================================
+        # DELTA HEDGE CALCULATOR
+        # ===================================================================
+        st.subheader("Delta Hedge Calculator")
+        
+        st.markdown("""
+        Calculate the index notional required to neutralize the net delta exposure of your option strategy.
+        **Note:** Delta represents directional exposure, not a hedge requirement. Use this for risk assessment.
+        """)
+        
+        # Calculate hedge notional
+        # Delta is already in percentage terms (0-100 scale)
+        net_delta_pct = strategy_result['total_delta']
+        total_delta_dollar = strategy_result['total_delta_dollar']
+        total_notional = strategy_result['total_notional']
+        
+        # For delta-neutral hedge: we need opposite position
+        # If strategy is long delta (positive), we sell index (short)
+        # If strategy is short delta (negative), we buy index (long)
+        hedge_notional = abs(total_delta_dollar)
+        hedge_direction = "SELL" if total_delta_dollar > 0 else "BUY"
+        
+        col1, col2, col3 = st.columns(3)
+            
+        with col1:
+            st.metric("Net Delta Exposure", 
+                     f"{net_delta_pct:+.2f}%",
+                     help="Net directional exposure as percentage of total notional")
+            st.caption(f"= ${total_delta_dollar:+,.0f} dollar delta")
+        
+        with col2:
+            st.metric("Hedge Notional (if needed)",
+                     f"${hedge_notional:,.0f}",
+                     help="Index notional to neutralize delta (for delta-neutral strategy)")
+        
+        with col3:
+            st.metric("Hedge Direction",
+                     f"{hedge_direction}",
+                     help="Direction to trade the index to neutralize")
+        
+        # Hedge ratio
+        if total_notional > 0:
+            hedge_ratio = hedge_notional / total_notional
+            st.write(f"**Hedge Ratio:** {hedge_ratio:.2%} of total strategy notional")
+            st.write(f"**Directional Exposure:** {abs(net_delta_pct):.2f}% {'long' if net_delta_pct > 0 else 'short'}")
+        
+        # Hedged position summary
+        with st.expander("Delta-Neutral Hedge Details (Optional)"):
+            st.markdown(f"""
+            **Current Position (Options Only):**
+            - Total Strategy Notional: ${total_notional:,.0f}
+            - Net Delta: {net_delta_pct:+.2f}%
+            - Dollar Delta Exposure: ${total_delta_dollar:+,.0f}
+            
+            **To Neutralize Delta (if desired):**
+            
+            1. Execute the {n_legs}-leg option strategy
+            2. {hedge_direction} ${hedge_notional:,.0f} notional of the underlying index
+            
+            **Resulting Hedged Position:**
+            - Options Delta: {net_delta_pct:+.2f}%
+            - Index Hedge Delta: {-net_delta_pct:+.2f}%
+            - **Net Delta: ~0%** (delta-neutral)
+            
+            **Important Notes:**
+            - **Most strategies are meant to be directional** - hedging removes your view
+            - Delta changes as the underlying moves (gamma effect)
+            - Hedge is static and needs rebalancing
+            - Consider if delta-neutrality aligns with your trading objective
+            """)
+        
+        st.divider()
+        
+        # ===================================================================
+        # SCENARIO ANALYSIS - P&L and Delta across spread levels
+        # ===================================================================
+        st.subheader("Scenario Analysis")
+        
+        st.markdown("""
+        Analyze how your strategy performs across different index spread levels.
+        Includes both option P&L and the effect of delta hedging.
+        """)
+        
+        # Scenario parameters
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            leg_index = st.selectbox(f"Index", ["EU_IG", "EU_XO", "US_IG", "US_HY"], key=f"leg_idx_{i}")
-        with col2:
-            leg_tenor = st.selectbox(f"Tenor", ["1m", "2m", "3m", "4m", "5m", "6m"], key=f"leg_tenor_{i}")
-        with col3:
-            leg_strike = st.number_input(f"Strike", value=100.0, key=f"leg_strike_{i}")
-        with col4:
-            leg_type = st.selectbox(f"Type", ["Payer", "Receiver"], key=f"leg_type_{i}")
-        with col5:
-            leg_position = st.selectbox(f"Position", [1, -1], key=f"leg_pos_{i}", format_func=lambda x: "Long" if x == 1 else "Short")
+            # Get current forward for the first leg as reference
+            ref_leg = legs[0]
+            try:
+                ref_market = pricer.get_market_data(ref_leg['index_name'], ref_leg['tenor'], strategy_date)
+                current_spread = ref_market['forward_level'].iloc[0] if not ref_market.empty else 100.0
+            except:
+                current_spread = 100.0
+            
+            spread_min = st.number_input("Min Spread", value=max(0.0, current_spread - 50), step=5.0, key="scenario_spread_min")
         
-        legs.append({
-            'index_name': leg_index,
-            'tenor': leg_tenor,
-            'strike': leg_strike,
-            'option_type': leg_type,
-            'position': leg_position,
-            'notional': strategy_notional
-        })
-    
-    if st.button("Price Strategy", type="primary"):
-        try:
-            strategy_result = pricer.price_strategy(legs, strategy_date)
+        with col2:
+            spread_max = st.number_input("Max Spread", value=current_spread + 50, step=5.0, key="scenario_spread_max")
+        
+        with col3:
+            spread_points = st.number_input("Number of Points", value=21, min_value=5, max_value=101, step=2, key="scenario_points")
+        
+        with col4:
+            analysis_metric = st.selectbox("Y-Axis Metric", 
+                                          ["P&L (Options Only)", "P&L (With Hedge)", "Net Delta", "Both P&L"],
+                                          key="scenario_metric")
+        
+        # Generate scenarios
+        spread_levels = np.linspace(spread_min, spread_max, int(spread_points))
+        
+        # Calculate P&L and delta for each scenario
+        scenario_results = []
+        
+        with st.spinner("Running scenarios..."):
+            for spread_level in spread_levels:
+                spread_shift = spread_level - current_spread  # in bps
+                
+                # PROPER APPROACH: Reprice options at the new spread level
+                # This captures convexity (gamma effect) as delta changes with spread
+                option_pnl = 0
+                total_delta_at_level = 0
+                
+                try:
+                    # Reprice each leg at the scenario spread level
+                    for leg_result in strategy_result['legs']:
+                        leg = leg_result['leg']
+                        original_price = leg_result['price']
+                        
+                        # Get market data for this leg
+                        market_data = pricer.get_market_data(leg['index_name'], leg['tenor'], strategy_date)
+                        if market_data.empty:
+                            continue
+                        
+                        # Get expiry and other parameters
+                        forward_original = market_data['forward_level'].iloc[0]
+                        expiry_str = market_data['expiry'].iloc[0]
+                        expiry_date = pd.to_datetime(expiry_str, format='%d-%b-%y')
+                        value_date = pd.to_datetime(strategy_date)
+                        days_to_expiry = (expiry_date - value_date).days
+                        underlying_duration = pricer.get_underlying_duration(leg['tenor'])
+                        
+                        # Interpolate vol at original strike
+                        vol = pricer.interpolate_vol(market_data, leg['strike'], leg['option_type'])
+                        
+                        # Price at SCENARIO spread level (keeping vol constant)
+                        scenario_price = pricer.price_option(
+                            forward=spread_level,  # Use scenario spread
+                            strike=leg['strike'],
+                            vol=vol,
+                            days_to_expiry=days_to_expiry,
+                            option_type=leg['option_type'],
+                            underlying_duration=underlying_duration,
+                            index_name=leg['index_name']
+                        )
+                        
+                        # Calculate P&L from upfront change
+                        leg_notional = leg['notional']
+                        upfront_change = (scenario_price['upfront_bps'] - original_price['upfront_bps']) / 10000
+                        leg_pnl = leg['position'] * upfront_change * leg_notional
+                        option_pnl += leg_pnl
+                        
+                        # Track delta at this scenario level
+                        leg_delta_dollar = leg['position'] * (scenario_price['delta'] / 100) * leg_notional
+                        total_delta_at_level += leg_delta_dollar
+                        
+                except Exception as e:
+                    # If repricing fails, fall back to linear approximation
+                    st.warning(f"Scenario repricing failed, using linear approximation: {e}")
+                    option_pnl = spread_shift * total_delta_dollar / 10000
+                    total_delta_at_level = total_delta_dollar
+                
+                # Index hedge P&L (static - doesn't change with spread)
+                if hedge_notional > 0:
+                    # Hedge P&L is linear in spread change
+                    # If we're SHORT index (sold protection): spread up = loss, spread down = gain
+                    # If we're LONG index (bought protection): spread up = gain, spread down = loss
+                    hedge_sign = 1 if hedge_direction == "SELL" else -1
+                    hedge_pnl = -spread_shift * hedge_notional / 10000 * hedge_sign
+                else:
+                    hedge_pnl = 0
+                
+                total_pnl = option_pnl + hedge_pnl
+                
+                # Calculate net delta as percentage at this scenario level
+                if total_notional > 0:
+                    net_delta_at_level_pct = (total_delta_at_level / total_notional) * 100
+                else:
+                    net_delta_at_level_pct = 0
+                
+                scenario_results.append({
+                    'spread': spread_level,
+                    'spread_shift': spread_shift,
+                    'option_pnl': option_pnl,
+                    'hedge_pnl': hedge_pnl,
+                    'total_pnl': total_pnl,
+                    'net_delta': net_delta_at_level_pct,
+                    'option_delta_dollar': total_delta_at_level
+                })
+        
+        scenario_df = pd.DataFrame(scenario_results)
+        
+        # Create visualization
+        if analysis_metric == "Both P&L":
+            # Two subplots
+            fig = make_subplots(
+                rows=2, cols=1,
+                subplot_titles=("P&L: Options Only", "P&L: With Delta Hedge"),
+                vertical_spacing=0.12,
+                row_heights=[0.5, 0.5]
+            )
             
-            # Display results
-            st.subheader("Strategy Results")
+            # Options only
+            fig.add_trace(
+                go.Scatter(x=scenario_df['spread'], y=scenario_df['option_pnl'],
+                          mode='lines+markers', name='Options P&L',
+                          line=dict(color='blue', width=2),
+                          marker=dict(size=4)),
+                row=1, col=1
+            )
             
-            # Summary metrics
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Upfront", f"${strategy_result['total_upfront']:,.2f}")
-            with col2:
-                st.metric("Total Delta", f"{strategy_result['total_delta']:.1f}%")
-            with col3:
-                st.metric("Total Vega", f"${strategy_result['total_vega']:,.2f}")
-            with col4:
-                st.metric("Strategy Type", strategy_result['strategy_type'])
+            # With hedge
+            fig.add_trace(
+                go.Scatter(x=scenario_df['spread'], y=scenario_df['total_pnl'],
+                          mode='lines+markers', name='Total P&L (with hedge)',
+                          line=dict(color='green', width=2),
+                          marker=dict(size=4)),
+                row=2, col=1
+            )
+            fig.add_trace(
+                go.Scatter(x=scenario_df['spread'], y=scenario_df['option_pnl'],
+                          mode='lines', name='Options P&L',
+                          line=dict(color='blue', width=1, dash='dash'),
+                          showlegend=False),
+                row=2, col=1
+            )
+            fig.add_trace(
+                go.Scatter(x=scenario_df['spread'], y=scenario_df['hedge_pnl'],
+                          mode='lines', name='Hedge P&L',
+                          line=dict(color='orange', width=1, dash='dash')),
+                row=2, col=1
+            )
             
-            # Leg details
-            st.subheader("Leg Details")
-            leg_details = []
+            # Add zero lines and current spread
+            fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5, row=1, col=1)
+            fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5, row=2, col=1)
+            fig.add_vline(x=current_spread, line_dash="dash", line_color="red", 
+                         annotation_text="Current", row=1, col=1)
+            fig.add_vline(x=current_spread, line_dash="dash", line_color="red",
+                         annotation_text="Current", row=2, col=1)
+            
+            fig.update_xaxes(title_text="Index Spread (bps)", row=2, col=1)
+            fig.update_yaxes(title_text="P&L ($)", row=1, col=1)
+            fig.update_yaxes(title_text="P&L ($)", row=2, col=1)
+            fig.update_layout(height=700, showlegend=True)
+            
+        else:
+            # Single plot
+            fig = go.Figure()
+            
+            if analysis_metric == "P&L (Options Only)":
+                fig.add_trace(
+                    go.Scatter(x=scenario_df['spread'], y=scenario_df['option_pnl'],
+                              mode='lines+markers', name='Options P&L',
+                              line=dict(color='blue', width=3),
+                              marker=dict(size=6))
+                )
+                y_title = "P&L ($)"
+                
+            elif analysis_metric == "P&L (With Hedge)":
+                fig.add_trace(
+                    go.Scatter(x=scenario_df['spread'], y=scenario_df['total_pnl'],
+                              mode='lines+markers', name='Total P&L',
+                              line=dict(color='green', width=3),
+                              marker=dict(size=6))
+                )
+                fig.add_trace(
+                    go.Scatter(x=scenario_df['spread'], y=scenario_df['option_pnl'],
+                              mode='lines', name='Options Only',
+                              line=dict(color='blue', width=1, dash='dash'))
+                )
+                fig.add_trace(
+                    go.Scatter(x=scenario_df['spread'], y=scenario_df['hedge_pnl'],
+                              mode='lines', name='Hedge',
+                              line=dict(color='orange', width=1, dash='dash'))
+                )
+                y_title = "P&L ($)"
+                
+            else:  # Net Delta
+                fig.add_trace(
+                    go.Scatter(x=scenario_df['spread'], y=scenario_df['net_delta'],
+                              mode='lines+markers', name='Net Delta',
+                              line=dict(color='purple', width=3),
+                              marker=dict(size=6))
+                )
+                y_title = "Delta (%)"
+            
+            # Add reference lines
+            fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5)
+            fig.add_vline(x=current_spread, line_dash="dash", line_color="red",
+                         annotation_text=f"Current: {current_spread:.1f}")
+            
+            fig.update_layout(
+                xaxis_title="Index Spread (bps)",
+                yaxis_title=y_title,
+                height=500,
+                showlegend=True,
+                hovermode='x unified'
+            )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Scenario data table
+        with st.expander("View Scenario Data"):
+            display_scenario_df = scenario_df.copy()
+            # Select only the columns we want to display
+            display_cols = ['spread', 'spread_shift', 'option_pnl', 'hedge_pnl', 'total_pnl', 'net_delta']
+            display_scenario_df = display_scenario_df[display_cols].copy()
+            display_scenario_df.columns = ['Spread', 'Shift (bps)', 'Option P&L', 'Hedge P&L', 'Total P&L', 'Net Delta (%)']
+            display_scenario_df = display_scenario_df.round(2)
+            st.dataframe(display_scenario_df, hide_index=True, use_container_width=True)
+        
+        st.divider()
+        
+        # ===================================================================
+        # LEG DETAILS TABLE - VERTICAL ORIENTATION
+        # ===================================================================
+        st.subheader("Individual Leg Details")
+        
+        # Create leg details as columns (vertical orientation)
+        leg_cols = st.columns(n_legs)
+        
+        for i, (leg_result, col) in enumerate(zip(strategy_result['legs'], leg_cols)):
+            leg = leg_result['leg']
+            price = leg_result['price']
+            
+            position_text = "LONG" if leg['position'] == 1 else "SHORT"
+            
+            with col:
+                st.markdown(f"### Leg {i+1}")
+                st.markdown(f"**{position_text} {leg['option_type']}**")
+                
+                # Create vertical data display
+                leg_data = pd.DataFrame({
+                    'Metric': [
+                        'Index',
+                        'Tenor', 
+                        'Strike',
+                        'Weight',
+                        'Notional',
+                        '---',
+                        'Upfront (bps)',
+                        'Upfront ($)',
+                        'Delta (%)',
+                        'Delta ($)',
+                        'Vega ($)',
+                        'Gamma',
+                        'Theta ($/day)'
+                    ],
+                    'Value': [
+                        leg['index_name'],
+                        leg['tenor'],
+                        f"{leg['strike']:.2f}",
+                        f"{leg.get('weight', 1.0):.1f}x",
+                        f"${leg['notional']:,.0f}",
+                        '---',
+                        f"{price['upfront_bps']:.2f}",
+                        f"${leg_result['contribution']:,.0f}",
+                        f"{price['delta']:.2f}",
+                        f"${leg_result.get('delta_dollar', 0):,.0f}",
+                        f"${price['vega_currency']:,.0f}",
+                        f"{price['gamma']:.4f}",
+                        f"${price['theta_currency']:,.0f}"
+                    ]
+                })
+                
+                st.dataframe(leg_data, hide_index=True, use_container_width=True, height=500)
+        
+        # Export options
+        st.divider()
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Export strategy summary
+            summary_data = {
+                'Strategy Name': [strategy_name],
+                'Date': [strategy_date],
+                'Total Notional': [total_notional],
+                'Total Upfront': [strategy_result['total_upfront']],
+                'Net Delta (%)': [strategy_result['total_delta']],
+                'Dollar Delta': [total_delta_dollar],
+                'Total Vega': [strategy_result['total_vega']],
+                'Total Gamma': [strategy_result['total_gamma']],
+                'Daily Theta': [strategy_result['total_theta']],
+                'Hedge Notional': [hedge_notional],
+                'Hedge Direction': [hedge_direction]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            csv = summary_df.to_csv(index=False)
+            st.download_button(
+                "Download Summary",
+                csv,
+                f"strategy_summary_{strategy_name.replace(' ', '_')}_{strategy_date}.csv",
+                "text/csv"
+            )
+        
+        with col2:
+            # Export leg details
+            leg_export_data = []
             for i, leg_result in enumerate(strategy_result['legs']):
                 leg = leg_result['leg']
                 price = leg_result['price']
-                leg_details.append({
+                leg_export_data.append({
                     'Leg': i+1,
+                    'Position': "Long" if leg['position'] == 1 else "Short",
                     'Index': leg['index_name'],
                     'Tenor': leg['tenor'],
                     'Strike': leg['strike'],
                     'Type': leg['option_type'],
-                    'Position': "Long" if leg['position'] == 1 else "Short",
-                    'Upfront (bps)': f"{price['upfront_bps']:.2f}",
-                    'Contribution ($)': f"{leg_result['contribution']:,.2f}",
-                    'Delta': f"{price['delta']:.1f}%"
+                    'Weight': leg.get('weight', 1.0),
+                    'Notional': leg['notional'],
+                    'Upfront_bps': price['upfront_bps'],
+                    'Contribution': leg_result['contribution'],
+                    'Delta_pct': price['delta'],
+                    'Delta_dollar': leg_result.get('delta_dollar', 0),
+                    'Vega': price['vega_currency'],
+                    'Gamma': price['gamma'],
+                    'Theta': price['theta_currency']
                 })
-            
-            legs_df = pd.DataFrame(leg_details)
-            st.dataframe(legs_df, hide_index=True, use_container_width=True)
-            
-        except Exception as e:
-            st.error(f"Strategy pricing failed: {e}")
+            legs_export_df = pd.DataFrame(leg_export_data)
+            csv_legs = legs_export_df.to_csv(index=False)
+            st.download_button(
+                "Download Legs",
+                csv_legs,
+                f"strategy_legs_{strategy_name.replace(' ', '_')}_{strategy_date}.csv",
+                "text/csv"
+            )
+        
+        with col3:
+            # Export scenario analysis
+            csv_scenarios = scenario_df.to_csv(index=False)
+            st.download_button(
+                "Download Scenarios",
+                csv_scenarios,
+                f"strategy_scenarios_{strategy_name.replace(' ', '_')}_{strategy_date}.csv",
+                "text/csv"
+            )
 
 with tab3:
     st.header("Volatility Surface Analysis")
+    
+    # Get tenor display mapping
+    tenor_display_map = get_tenor_display_map()
+    tenor_options = list(tenor_display_map.values())
+    tenor_codes = list(tenor_display_map.keys())
     
     col1, col2, col3 = st.columns(3)
     with col1:
         surf_index = st.selectbox("Index", ["EU_IG", "EU_XO", "US_IG", "US_HY"], key="surf_idx")
     with col2:
-        surf_tenor = st.selectbox("Tenor", ["1m", "2m", "3m", "4m", "5m", "6m"], key="surf_tenor")
+        surf_tenor_display = st.selectbox("Tenor", tenor_options, key="surf_tenor")
+        surf_tenor = tenor_codes[tenor_options.index(surf_tenor_display)]
     with col3:
-        surf_date = st.selectbox("Data Date", available_dates, key="surf_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
+        surf_date = st.selectbox("Data Date", available_dates, index=0, key="surf_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
     
     if st.button("Load Surface", type="primary"):
         try:
@@ -472,13 +1042,19 @@ with tab3:
 with tab4:
     st.header("Model Validation")
     
+    # Get tenor display mapping
+    tenor_display_map = get_tenor_display_map()
+    tenor_options = list(tenor_display_map.values())
+    tenor_codes = list(tenor_display_map.keys())
+    
     col1, col2, col3 = st.columns(3)
     with col1:
         val_index = st.selectbox("Index", ["EU_IG", "EU_XO", "US_IG", "US_HY"], key="val_idx")
     with col2:
-        val_tenor = st.selectbox("Tenor", ["1m", "2m", "3m", "4m", "5m", "6m"], key="val_tenor")
+        val_tenor_display = st.selectbox("Tenor", tenor_options, key="val_tenor")
+        val_tenor = tenor_codes[tenor_options.index(val_tenor_display)]
     with col3:
-        val_date = st.selectbox("Data Date", available_dates, key="val_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
+        val_date = st.selectbox("Data Date", available_dates, index=0, key="val_date") if available_dates else datetime.now().strftime("%Y-%m-%d")
     
     if st.button("Run Validation", type="primary"):
         try:

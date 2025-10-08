@@ -59,7 +59,7 @@ with col2:
     st.metric("Indices Tracked", "6")
     
 with col3:
-    st.metric("Active Series", "S43")
+    st.metric("Active Series", "S44")
     
 with col4:
     st.metric("Database Status", "Connected")
