@@ -23,7 +23,7 @@ from models.ml_predictions import SpreadPredictor
 from models.database import CDSDatabase
 
 def run():
-    st.title("🤖 ML Analysis & Predictions")
+    st.title("ML Analysis & Predictions")
     
     # Sidebar controls
     with st.sidebar:
@@ -41,8 +41,9 @@ def run():
         
         tenor = st.selectbox("Tenor", ["3Y", "5Y", "7Y", "10Y"])
     
-    # Load data
-    db = CDSDatabase("data/raw/cds_indices_raw.db")
+    # Load data - use absolute path from root directory
+    db_path = os.path.join(root_dir, "data", "raw", "cds_indices_raw.db")
+    db = CDSDatabase(db_path)
     spread_data = db.query_historical_spreads(index_name, tenor, '2020-01-01')
     
     if spread_data.empty:
@@ -293,7 +294,7 @@ def show_statistical_analysis(spread_data, db):
             st.plotly_chart(fig_qq, use_container_width=True)
             
             # Q-Q Plot Interpretation
-            with st.expander("📊 Q-Q Plot Interpretation"):
+            with st.expander("Q-Q Plot Interpretation"):
                 # Calculate deviations at the tails
                 tail_threshold = len(theoretical_quantiles) // 10  # Look at 10% tails
                 
@@ -309,7 +310,7 @@ def show_statistical_analysis(spread_data, db):
                 
                 # Overall shape interpretation
                 if abs(left_tail_deviation) < 2 and abs(right_tail_deviation) < 2:
-                    st.info("📈 **Near-Normal Distribution**: Data points closely follow the reference line, suggesting the spread distribution is approximately normal.")
+                    st.info("**Near-Normal Distribution**: Data points closely follow the reference line, suggesting the spread distribution is approximately normal.")
                 else:
                     deviations = []
                     
@@ -326,7 +327,7 @@ def show_statistical_analysis(spread_data, db):
                         deviations.append("• **Fat right tail**: Higher spreads occur more frequently than expected (potential for extreme widening)")
                     
                     if deviations:
-                        st.warning("⚠️ **Non-Normal Distribution Detected:**\n" + "\n".join(deviations))
+                        st.warning("**Non-Normal Distribution Detected:**\n" + "\n".join(deviations))
                 
                 # S-shape or other patterns
                 middle_points = len(theoretical_quantiles) // 2
@@ -335,14 +336,14 @@ def show_statistical_analysis(spread_data, db):
                 
                 if abs(middle_deviation) > 2:
                     if middle_deviation > 0:
-                        st.info("📊 **Positive skew detected**: Distribution has a longer right tail")
+                        st.info("**Positive skew detected**: Distribution has a longer right tail")
                     else:
-                        st.info("📊 **Negative skew detected**: Distribution has a longer left tail")
+                        st.info("**Negative skew detected**: Distribution has a longer left tail")
                 
                 # Risk implications
                 st.markdown("**Risk Implications:**")
                 if right_tail_deviation > 3:
-                    st.error("🚨 **Tail Risk Alert**: Fat right tail suggests higher probability of extreme spread widening events than normal distribution would predict. Consider tail risk hedging.")
+                    st.error("**Tail Risk Alert**: Fat right tail suggests higher probability of extreme spread widening events than normal distribution would predict. Consider tail risk hedging.")
                 elif right_tail_deviation > 2:
                     st.warning("⚡ **Moderate Tail Risk**: Some evidence of tail risk in spread widening scenarios.")
                 else:
